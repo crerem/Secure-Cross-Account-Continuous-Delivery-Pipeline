@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates a CMK in KMS and grants access to other accounts
+
+
+Parameters:
+  ToolsAccount:
+    Description: ToolsAccount
+    Type: Number
+  TestAccount:
+    Description: AWS AccountNumber for Testing Account
+    Type: Number
+  ProductionAccount:
+    Description: AWS AccountNumber for Production account
+    Type: Number
+  ProjectName:
+    Description: Project Name 
+    Type: String
+    Default: sg12-sample
+  CodeBuildCondition:
+    Description: Conditionally adds the access required by code build project role
+    Type: String
+    Default: false
+Conditions:
+  AddCodeBuildResource: !Equals [ !Ref CodeBuildCondition, true ]
+
+
+
+Resources:
+  #############################################################################
+  # declare the KMS key that will be used to encrypt Artifact bucket
+  ArtifactKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Used by Test and Production accounts to Encrypt&Decrypt artifacts 
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: !Ref AWS::StackName
+        Statement:
+          -
+            Sid: Key administration
+            Effect: Allow
+            Principal:
+              AWS: 
+                - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - "kms:Create*"
+              - "kms:Describe*"
+              - "kms:Enable*"
+              - "kms:List*"
+              - "kms:Put*"
+              - "kms:Update*"
+              - "kms:Revoke*"
+              - "kms:Disable*"
+              - "kms:Get*"
+              - "kms:Delete*"
+              - "kms:ScheduleKeyDeletion"
+              - "kms:CancelKeyDeletion"
+            Resource: "*"
+          -
+            Sid: Add permissions for testing and production account
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${ProductionAccount}:root
+                - !Sub arn:aws:iam::${TestAccount}:root
+                - !Sub arn:aws:iam::${ToolsAccount}:root
+                - !If
+                  - AddCodeBuildResource
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-CodeBuildRole
+                  - !Ref AWS::NoValue
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+
+
+
+  #############################################################################
+  # declare the KMS key Alias
+  ArtifactKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-codepipeline-crossaccounts
+      TargetKeyId: !Ref ArtifactKey
+
+  #############################################################################
+  #bucket - we will store here the artifacts used by the pipeline       
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub ${ProjectName}-artifact-bucket
+
+
+
+#output the Artifcat Key and Bucket
+Outputs:
+  CMK:
+    Value: !GetAtt [ArtifactKey,Arn]
+  ArtifactBucket:
+    Value: !Ref ArtifactBucket

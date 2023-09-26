@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CrossAccountsRole to be assumed by CodePipeline services
+
+Parameters:
+  ArtifactBucket:
+    Description: S3 Bucket in Tooling Account, which holds the artifacts built by codebuild
+    Type: String
+  ToolsAccount:
+    Description: AWS AccountNumber for Tooling Account
+    Type: Number
+  ArtifactKeyArn:
+    Description: ARN of the KMS CMK creates in Tools account
+    Type: String
+  ProjectName:
+    Description: Project Name 
+    Type: String
+    Default: sg12-sample
+
+Resources:
+
+  # cloudformation role - can be assumed by tooling account and has acces to cloudfomation and bucket
+  ##################################################################################        
+  CloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-ToolingAccountPipelineCloudformationRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Ref ToolsAccount
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+
+  # the policy for CloudFormationRole
+  ##################################################################################   
+  CloudFormationRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-ToolingAccountPipelineCloudformationPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:
+              - kms:*
+            Resource: !Ref ArtifactKeyArn
+      Roles:
+        -
+          !Ref CloudFormationRole
+   
+
+  # cloudformation deplyment  role - actualy deploys the resurces
+  ##################################################################################        
+  CloudFormationDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-CloudformationDeployerRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  
+  # the policy for CloudFormationDeploymentRole
+  ##################################################################################        
+  CloudFormationDeploymentRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${ProjectName}-CloudformationDeployerPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - lambda:*
+              - iam:*
+              - cloudformation:*
+              - apigateway:* #required apigateway:PUT
+            Resource: "*"
+          -
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+             - !Join ['',['arn:aws:s3:::',!Ref ArtifactBucket, '/*']]
+             - !Join ['',['arn:aws:s3:::',!Ref ArtifactBucket]]
+      Roles:
+        -
+          !Ref CloudFormationDeploymentRole       
+              

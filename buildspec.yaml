@@ -1,0 +1,27 @@
+version: 0.2 
+
+        
+phases:
+  install:
+    # run-as: Linux-user-name
+    # on-failure: ABORT | CONTINUE
+    runtime-versions:
+      python: 3.9
+ 
+  build:
+    # run-as: Linux-user-name
+    on-failure: ABORT
+    commands:
+      - echo "Starting SAM packaging `date` in `pwd`"
+      - aws cloudformation package --template-file template.yaml --s3-bucket $ArtifactBucket --output-template-file packaged-template.yml
+  
+  post_build:
+    commands:
+      - echo "SAM packaging completed on `date`"
+   
+artifacts: # https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html#build-spec.artifacts
+  files:
+    - packaged-template.yml
+    # - location
+  name: artifact-name
+  discard-paths: yes
